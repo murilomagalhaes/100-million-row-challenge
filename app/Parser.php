@@ -8,49 +8,46 @@ final class Parser
     const string BASE_URL = 'https://stitcher.io';
     private array $urls = [];
 
-
     public function parse(string $inputPath, string $outputPath): void
     {
         $urlPathOffset = strlen(self::BASE_URL);
 
         $inputFile = fopen($inputPath, "r");
 
+        gc_disable();
+
         while ($line = fgets($inputFile)) {
             $this->processLine($line, $urlPathOffset);
         }
 
-        foreach ($this->urls as &$path) {
-            ksort($path, SORT_STRING);
+        foreach ($this->urls as &$visits) {
+            ksort($visits, SORT_NUMERIC);
+            $visits = array_combine(
+                array_map(
+                    fn(int $dateKey): string => preg_replace('/(\d{4})(\d{2})(\d{2})/', '$1-$2-$3', (string)$dateKey),
+                    array_keys($visits)
+                ),
+                array_values($visits)
+            );
         }
+
+        gc_enable();
 
         fclose($inputFile);
 
-        $this->writeJson($outputPath);
+        file_put_contents($outputPath, json_encode($this->urls, JSON_PRETTY_PRINT));
+
     }
 
     private function processLine(string $line, int $urlPathOffset): void
     {
-        $delimiterPos = strpos($line, ',');
+        $path = substr($line, $urlPathOffset, -27);
+        $date = substr($line, -26, 10);
 
-        $path = substr($line, $urlPathOffset, $delimiterPos - $urlPathOffset);
-        $date = substr($line, $delimiterPos + 1, 10);
+        $dateKey = (int)str_replace('-', '', $date);
 
-        if (isset($this->urls[$path][$date])) {
-            $this->urls[$path][$date]++;
-            return;
-        }
-
-        $this->urls[$path][$date] = 1;
+        $visit = &$this->urls[$path][$dateKey];
+        ++$visit;
     }
-
-    private function writeJson(string $outputPath): void
-    {
-        $outputFile = fopen($outputPath, 'w');
-
-        fwrite($outputFile, json_encode($this->urls, JSON_PRETTY_PRINT));
-
-        fclose($outputFile);
-    }
-
 
 }
